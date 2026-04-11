@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Cutting Game — 切割遊戲</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a18; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+// === CUTTING GAME ===
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// Hi-DPI support
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const W = () => window.innerWidth;
+const H = () => window.innerHeight;
+
+// === GAME STATE ===
+let state = 'menu'; // menu, playing, cutting, levelUp, gameOver
+let level = 1;
+let score = 0;
+let lives = 3;
+let blocks = [];
+let ropeY = 0;
+let bladeY = 0;
+let bladeTargetY = 0;
+let cutting = false;
+let cutTimer = 0;
+let cutResult = null; // 'hit', 'miss', 'wrong'
+let cutResultTimer = 0;
+let levelUpTimer = 0;
+let shakeX = 0;
+let shakeTimer = 0;
+let particles = [];
+
+// Block config per level
+function getConfig() {
+  const baseSpeed = 1.8 + level * 0.4;
+  const greenChance = Math.max(0.12, 0.28 - level * 0.02);
+  const blockCount = Math.min(15, 8 + level);
+  const blockSize = Math.max(36, 52 - level * 1.5);
+  const gap = Math.max(20, 32 - level * 1.2);
+  return { baseSpeed, greenChance, blockCount, blockSize, gap };
+}
+
+function spawnBlocks() {
+  blocks = [];
+  const cfg = getConfig();
+  let x = W() + 40;
+  let hasGreen = false;
+  for (let i = 0; i < cfg.blockCount; i++) {
+    const isGreen = Math.random() < cfg.greenChance;
+    if (isGreen) hasGreen = true;
+    blocks.push({
+      x: x,
+      w: cfg.blockSize,
+      h: cfg.blockSize,
+      green: isGreen,
+      cut: false,
+      num: String(i + 1).padStart(2, '0')
+    });
+    x += cfg.blockSize + cfg.gap;
+  }
+  // Ensure at least one green
+  if (!hasGreen) {
+    const idx = Math.floor(Math.random() * blocks.length);
+    blocks[idx].green = true;
+  }
+}
+
+function initLevel() {
+  ropeY = H() * 0.55;
+  bladeY = ropeY - H() * 0.32;
+  bladeTargetY = bladeY;
+  cutting = false;
+  cutTimer = 0;
+  cutResult = null;
+  cutResultTimer = 0;
+  spawnBlocks();
+}
+
+function startGame() {
+  level = 1;
+  score = 0;
+  lives = 3;
+  state = 'playing';
+  particles = [];
+  initLevel();
+}
+
+// === PARTICLES ===
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6 - 2,
+      life: 1,
+      decay: 0.015 + Math.random() * 0.02,
+      size: 2 + Math.random() * 4,
+      color
+    });
+  }
+}
+
+// === INPUT ===
+function onTap() {
+  if (state === 'menu') {
+    startGame();
+    return;
+  }
+  if (state === 'gameOver') {
+    state = 'menu';
+    return;
+  }
+  if (state === 'playing' && !cutting) {
+    cutting = true;
+    cutTimer = 0;
+    bladeTargetY = ropeY;
+  }
+}
+
+canvas.addEventListener('pointerdown', onTap);
+
+// === UPDATE ===
+function update(dt) {
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vy += 0.15 * dt * 60;
+    p.life -= p.decay * dt * 60;
+    return p.life > 0;
+  });
+
+  // Shake
+  if (shakeTimer > 0) {
+    shakeTimer -= dt;
+    shakeX = (Math.random() - 0.5) * 8 * (shakeTimer / 0.3);
+  } else {
+    shakeX = 0;
+  }
+
+  if (state === 'levelUp') {
+    levelUpTimer -= dt;
+    if (levelUpTimer <= 0) {
+      level++;
+      state = 'playing';
+      initLevel();
+    }
+    return;
+  }
+
+  if (state !== 'playing') return;
+
+  const cfg = getConfig();
+
+  // Move blocks
+  blocks.forEach(b => {
+    if (!b.cut) b.x -= cfg.baseSpeed * dt * 60;
+  });
+
+  // Blade animation
+  if (cutting) {
+    cutTimer += dt;
+    const cutDuration = 0.12;
+    const returnDuration = 0.3;
+
+    if (cutTimer < cutDuration) {
+      // Swing down
+      const t = cutTimer / cutDuration;
+      bladeY = (ropeY - H() * 0.32) + (ropeY - (ropeY - H() * 0.32)) * easeInQuad(t);
+    } else if (cutTimer < cutDuration + 0.05) {
+      // Check hit at the moment blade reaches rope
+      if (!cutResult) {
+        const bladeX = W() / 2;
+        let hitBlock = null;
+        blocks.forEach(b => {
+          if (!b.cut && bladeX >= b.x && bladeX <= b.x + b.w) {
+            hitBlock = b;
+          }
+        });
+
+        if (hitBlock) {
+          hitBlock.cut = true;
+          if (hitBlock.green) {
+            cutResult = 'hit';
+            score += 100 * level;
+            spawnParticles(hitBlock.x + hitBlock.w / 2, ropeY, '#3a8c65', 20);
+          } else {
+            cutResult = 'wrong';
+            lives--;
+            shakeTimer = 0.3;
+            spawnParticles(hitBlock.x + hitBlock.w / 2, ropeY, '#8c3a3a', 15);
+            if (lives <= 0) {
+              state = 'gameOver';
+              return;
+            }
+          }
+        } else {
+          cutResult = 'miss';
+        }
+        cutResultTimer = 1.2;
+      }
+    } else if (cutTimer < cutDuration + returnDuration) {
+      // Return up
+      const t = (cutTimer - cutDuration - 0.05) / (returnDuration - 0.05);
+      bladeY = ropeY + ((ropeY - H() * 0.32) - ropeY) * easeOutQuad(t);
+    } else {
+      bladeY = ropeY - H() * 0.32;
+      cutting = false;
+      cutTimer = 0;
+      cutResult = null;
+
+      // Check if should advance level (after successful green hit)
+      // or reset blade
+    }
+  }
+
+  // Cut result timer
+  if (cutResultTimer > 0) {
+    cutResultTimer -= dt;
+  }
+
+  // Check if all greens passed (missed) — lose a life
+  const allGreensPassed = blocks.filter(b => b.green && !b.cut).every(b => b.x + b.w < -10);
+  const allBlocksPassed = blocks.every(b => b.x + b.w < -10 || b.cut);
+
+  if (allGreensPassed && blocks.filter(b => b.green && !b.cut).length > 0) {
+    // Green blocks scrolled off screen — miss
+    lives--;
+    shakeTimer = 0.3;
+    if (lives <= 0) {
+      state = 'gameOver';
+      return;
+    }
+    initLevel();
+  }
+
+  // Check level clear: at least one green was cut
+  const greensCut = blocks.filter(b => b.green && b.cut).length;
+  if (greensCut > 0 && !cutting) {
+    state = 'levelUp';
+    levelUpTimer = 1.5;
+  }
+}
+
+function easeInQuad(t) { return t * t; }
+function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
+
+// === DRAW ===
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.translate(shakeX, 0);
+
+  // Background
+  ctx.fillStyle = '#1a1a18';
+  ctx.fillRect(0, 0, w, h);
+
+  // Subtle grid
+  ctx.strokeStyle = 'rgba(50,50,45,0.06)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 60) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
+  for (let y = 0; y < h; y += 60) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // Subtle green glow at center
+  const grd = ctx.createRadialGradient(w/2, ropeY, 0, w/2, ropeY, w * 0.35);
+  grd.addColorStop(0, 'rgba(58,140,101,0.04)');
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, w, h);
+
+  if (state === 'menu') {
+    drawMenu(w, h);
+    ctx.restore();
+    return;
+  }
+
+  if (state === 'gameOver') {
+    drawGameOver(w, h);
+    ctx.restore();
+    return;
+  }
+
+  // === ROPE ===
+  ctx.strokeStyle = '#3e3e38';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([14, 4]);
+  ctx.beginPath();
+  ctx.moveTo(0, ropeY);
+  ctx.lineTo(w, ropeY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // === BLOCKS ===
+  const cfg = getConfig();
+  blocks.forEach(b => {
+    if (b.cut) return;
+    const bx = b.x;
+    const by = ropeY - b.h / 2;
+
+    ctx.fillStyle = b.green ? '#2a6a4e' : '#2c2c28';
+    ctx.strokeStyle = b.green ? '#3a8c65' : '#3a3a34';
+    ctx.lineWidth = 1.2;
+    ctx.fillRect(bx, by, b.w, b.h);
+    ctx.strokeRect(bx, by, b.w, b.h);
+
+    if (b.green) {
+      ctx.shadowColor = 'rgba(58,140,101,0.15)';
+      ctx.shadowBlur = 18;
+      ctx.fillRect(bx, by, b.w, b.h);
+      ctx.shadowBlur = 0;
+    }
+
+    // Block number
+    ctx.fillStyle = b.green ? '#3a8c65' : '#333330';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.num, bx + b.w / 2, by + b.h + 14);
+  });
+
+  // === BLADE ===
+  const bladeX = w / 2;
+
+  // Handle
+  const handleTop = bladeY - 80;
+  ctx.fillStyle = '#3a3632';
+  ctx.fillRect(bladeX - 7, handleTop, 14, 80);
+
+  // Guard
+  ctx.fillStyle = '#4a4642';
+  ctx.fillRect(bladeX - 15, bladeY - 4, 30, 8);
+
+  // Edge
+  const edgeLen = h * 0.22;
+  const gradient = ctx.createLinearGradient(0, bladeY, 0, bladeY + edgeLen);
+  gradient.addColorStop(0, '#c0c0b8');
+  gradient.addColorStop(0.35, '#e0e0d8');
+  gradient.addColorStop(0.55, '#f0f0e8');
+  gradient.addColorStop(0.8, '#d0d0c8');
+  gradient.addColorStop(1, '#b8b8b0');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(bladeX - 1, bladeY + 4, 2, edgeLen);
+
+  // Tip
+  ctx.fillStyle = '#d0d0c6';
+  ctx.beginPath();
+  ctx.moveTo(bladeX - 5, bladeY + 4 + edgeLen);
+  ctx.lineTo(bladeX + 5, bladeY + 4 + edgeLen);
+  ctx.lineTo(bladeX, bladeY + 4 + edgeLen + 18);
+  ctx.closePath();
+  ctx.fill();
+
+  // === FIGURE (below rope) ===
+  const figY = h * 0.78;
+
+  // Arms reaching up
+  ctx.strokeStyle = '#3a3a34';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(bladeX - 20, figY);
+  ctx.lineTo(bladeX - 7, handleTop + 70);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(bladeX + 20, figY);
+  ctx.lineTo(bladeX + 7, handleTop + 70);
+  ctx.stroke();
+
+  // Head
+  ctx.fillStyle = '#262622';
+  ctx.strokeStyle = '#343430';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(bladeX, figY + 10, 20, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Body
+  ctx.fillStyle = '#262622';
+  ctx.strokeStyle = '#343430';
+  roundRect(ctx, bladeX - 28, figY + 34, 56, 80, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // === HUD ===
+  // Level
+  ctx.fillStyle = '#3a8c65';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('\u25CF LEVEL ' + level, 20, 30);
+
+  // Score
+  ctx.fillStyle = '#585850';
+  ctx.textAlign = 'right';
+  ctx.fillText('SCORE: ' + score, w - 20, 30);
+
+  // Lives
+  ctx.fillStyle = '#8c3a3a';
+  ctx.textAlign = 'left';
+  let livesStr = '';
+  for (let i = 0; i < lives; i++) livesStr += '\u2764 ';
+  ctx.fillText(livesStr, 20, 52);
+
+  // Cut result feedback
+  if (cutResultTimer > 0 && cutResult) {
+    ctx.globalAlpha = Math.min(1, cutResultTimer / 0.3);
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'center';
+    if (cutResult === 'hit') {
+      ctx.fillStyle = '#3a8c65';
+      ctx.fillText('PERFECT CUT!', w / 2, ropeY - 60);
+    } else if (cutResult === 'wrong') {
+      ctx.fillStyle = '#8c3a3a';
+      ctx.fillText('WRONG BLOCK!', w / 2, ropeY - 60);
+    } else if (cutResult === 'miss') {
+      ctx.fillStyle = '#585850';
+      ctx.fillText('MISS!', w / 2, ropeY - 60);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Level up overlay
+  if (state === 'levelUp') {
+    ctx.fillStyle = 'rgba(26,26,24,0.7)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#3a8c65';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('LEVEL ' + (level + 1), w / 2, h / 2 - 10);
+    ctx.fillStyle = '#585850';
+    ctx.font = '13px monospace';
+    ctx.fillText('GET READY', w / 2, h / 2 + 20);
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+
+  // Corner marks
+  const cm = 20;
+  ctx.strokeStyle = '#3a3a34';
+  ctx.lineWidth = 1;
+  // TL
+  ctx.beginPath(); ctx.moveTo(cm, cm); ctx.lineTo(cm + 14, cm); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cm, cm); ctx.lineTo(cm, cm + 14); ctx.stroke();
+  // TR
+  ctx.beginPath(); ctx.moveTo(w - cm, cm); ctx.lineTo(w - cm - 14, cm); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w - cm, cm); ctx.lineTo(w - cm, cm + 14); ctx.stroke();
+  // BL
+  ctx.beginPath(); ctx.moveTo(cm, h - cm); ctx.lineTo(cm + 14, h - cm); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cm, h - cm); ctx.lineTo(cm, h - cm - 14); ctx.stroke();
+  // BR
+  ctx.beginPath(); ctx.moveTo(w - cm, h - cm); ctx.lineTo(w - cm - 14, h - cm); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w - cm, h - cm); ctx.lineTo(w - cm, h - cm - 14); ctx.stroke();
+
+  // Bottom ref line
+  ctx.strokeStyle = '#26261f';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(40, h - 30);
+  ctx.lineTo(w - 40, h - 30);
+  ctx.stroke();
+  ctx.fillStyle = '#26261f';
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('KINETIC SEVERANCE v' + level + '.0', w - 40, h - 18);
+
+  ctx.restore();
+}
+
+function drawMenu(w, h) {
+  ctx.fillStyle = '#585850';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'center';
+  ctx.letterSpacing = '8px';
+  ctx.fillText('K I N E T I C   S E V E R A N C E', w / 2, h * 0.35);
+  ctx.letterSpacing = '0px';
+
+  ctx.fillStyle = '#3a3a34';
+  ctx.font = '9px monospace';
+  ctx.fillText('concept \u2014 timing \u2014 precision', w / 2, h * 0.35 + 24);
+
+  // Animated blade hint
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 500);
+  ctx.globalAlpha = 0.4 + pulse * 0.4;
+  ctx.fillStyle = '#3a8c65';
+  ctx.font = '14px monospace';
+  ctx.fillText('TAP TO START', w / 2, h * 0.55);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#333330';
+  ctx.font = '9px monospace';
+  ctx.fillText('\u2500 Cut the green blocks \u2500', w / 2, h * 0.65);
+  ctx.fillText('Avoid the gray ones', w / 2, h * 0.65 + 18);
+}
+
+function drawGameOver(w, h) {
+  ctx.fillStyle = 'rgba(26,26,24,0.85)';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = '#8c3a3a';
+  ctx.font = 'bold 24px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', w / 2, h * 0.38);
+
+  ctx.fillStyle = '#585850';
+  ctx.font = '14px monospace';
+  ctx.fillText('SCORE: ' + score, w / 2, h * 0.45);
+  ctx.fillText('LEVEL: ' + level, w / 2, h * 0.45 + 24);
+
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 500);
+  ctx.globalAlpha = 0.4 + pulse * 0.4;
+  ctx.fillStyle = '#585850';
+  ctx.font = '12px monospace';
+  ctx.fillText('TAP TO CONTINUE', w / 2, h * 0.58);
+  ctx.globalAlpha = 1;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// === GAME LOOP ===
+let lastTime = 0;
+function loop(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
