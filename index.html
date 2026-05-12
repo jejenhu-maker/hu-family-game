@@ -2,570 +2,777 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Cutting Game — 切割遊戲</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Clean Space Master by Kai</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a18; }
-  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  :root {
+    --ink: #17211b;
+    --cream: #fff6df;
+    --mint: #8df0c0;
+    --lime: #b7f35a;
+    --ruby: #e83f6f;
+    --coin: #ffd447;
+    --sky: #9ed8ff;
+    --panel: rgba(255, 246, 223, 0.92);
+    --shadow: rgba(23, 33, 27, 0.22);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #7cc5f4;
+    color: var(--ink);
+    font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+    touch-action: none;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+  }
+  #ui {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+  .topbar {
+    position: absolute;
+    top: max(10px, env(safe-area-inset-top));
+    left: 10px;
+    right: 10px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: start;
+  }
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+  .pill, .btn {
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    background: var(--panel);
+    box-shadow: 0 5px 0 var(--shadow);
+    font-weight: 900;
+    letter-spacing: 0.2px;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.55);
+  }
+  .pill {
+    padding: 8px 11px;
+    font-size: 13px;
+    min-width: 72px;
+  }
+  .actions {
+    pointer-events: auto;
+    display: flex;
+    gap: 7px;
+  }
+  .btn {
+    border-radius: 18px;
+    padding: 10px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--ink);
+    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
+  }
+  .btn:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--shadow); }
+  .btn.sell { background: #ffe083; }
+  .btn.upgrade { background: #a8f4d0; }
+  .btn:disabled { opacity: 0.48; filter: grayscale(0.5); }
+  #joystick {
+    position: absolute;
+    left: max(18px, env(safe-area-inset-left));
+    bottom: max(20px, env(safe-area-inset-bottom));
+    width: 132px;
+    height: 132px;
+    border-radius: 50%;
+    border: 4px solid rgba(23,33,27,0.9);
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.75), rgba(255,246,223,0.66) 36%, rgba(52, 91, 75, 0.18));
+    box-shadow: inset 0 0 0 8px rgba(255,255,255,0.24), 0 8px 0 rgba(23,33,27,0.17);
+    pointer-events: auto;
+  }
+  #stick {
+    position: absolute;
+    left: 39px;
+    top: 39px;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    border: 4px solid var(--ink);
+    background: linear-gradient(145deg, #ff8fb2, #e83f6f);
+    box-shadow: 0 5px 0 rgba(23,33,27,0.25);
+  }
+  #joystick::after {
+    content: "MOVE";
+    position: absolute;
+    left: 50%;
+    bottom: -24px;
+    transform: translateX(-50%);
+    font-size: 12px;
+    font-weight: 1000;
+    color: rgba(23,33,27,0.66);
+    letter-spacing: 1.5px;
+  }
+  .hint {
+    position: absolute;
+    left: 50%;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    max-width: min(520px, calc(100vw - 180px));
+    padding: 10px 13px;
+    border: 3px solid var(--ink);
+    border-radius: 18px;
+    background: rgba(255,246,223,0.82);
+    box-shadow: 0 5px 0 rgba(23,33,27,0.16);
+    font-size: 13px;
+    font-weight: 800;
+    text-align: center;
+  }
+  .overlay, .upgradePanel {
+    position: absolute;
+    inset: 0;
+    display: none;
+    place-items: center;
+    padding: 18px;
+    background: radial-gradient(circle at 50% 35%, rgba(255, 246, 223, 0.36), rgba(21, 41, 45, 0.38));
+    pointer-events: auto;
+  }
+  .overlay.show, .upgradePanel.show { display: grid; }
+  .card {
+    width: min(560px, 94vw);
+    border: 4px solid var(--ink);
+    border-radius: 30px;
+    background: var(--cream);
+    box-shadow: 0 14px 0 rgba(23,33,27,0.25);
+    padding: 22px;
+    text-align: center;
+  }
+  h1 {
+    margin: 0 0 6px;
+    font-size: clamp(34px, 10vw, 64px);
+    line-height: 0.9;
+    letter-spacing: -2px;
+  }
+  .subtitle { margin: 0 auto 18px; font-weight: 900; color: #49665a; }
+  .bigbtn {
+    border: 4px solid var(--ink);
+    border-radius: 22px;
+    background: linear-gradient(180deg, #b7f35a, #7ede78);
+    box-shadow: 0 7px 0 rgba(23,33,27,0.25);
+    color: var(--ink);
+    font-size: 22px;
+    font-weight: 1000;
+    padding: 14px 22px;
+    cursor: pointer;
+  }
+  .rules {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 16px 0 18px;
+    text-align: left;
+    font-weight: 800;
+    font-size: 14px;
+  }
+  .rule {
+    border: 2px solid rgba(23,33,27,0.24);
+    border-radius: 16px;
+    padding: 10px;
+    background: rgba(255,255,255,0.42);
+  }
+  .upgradeGrid {
+    display: grid;
+    gap: 10px;
+    margin: 16px 0;
+  }
+  .upgradeItem {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+    text-align: left;
+    border: 3px solid var(--ink);
+    border-radius: 20px;
+    padding: 12px;
+    background: rgba(255,255,255,0.44);
+  }
+  .upgradeItem b { font-size: 16px; }
+  .upgradeItem small { display: block; margin-top: 3px; color: #52665d; font-weight: 800; }
+  .buyBtn {
+    border: 3px solid var(--ink);
+    border-radius: 14px;
+    background: var(--coin);
+    box-shadow: 0 4px 0 rgba(23,33,27,0.2);
+    padding: 9px 10px;
+    font-weight: 1000;
+    cursor: pointer;
+    min-width: 86px;
+  }
+  .closeBtn { background: #ffb4c9; }
+  @media (max-width: 520px) {
+    .topbar { grid-template-columns: 1fr; }
+    .actions { justify-self: end; }
+    .pill { font-size: 12px; padding: 7px 9px; min-width: auto; }
+    .btn { font-size: 13px; padding: 9px 10px; }
+    #joystick { width: 118px; height: 118px; }
+    #stick { width: 50px; height: 50px; left: 34px; top: 34px; }
+    .hint { display: none; }
+    .rules { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="ui">
+  <div class="topbar">
+    <div class="stats">
+      <div class="pill">💰 $<span id="money">0</span></div>
+      <div class="pill">💎 <span id="ruby">0</span></div>
+      <div class="pill">🧹 <span id="dust">0</span>/<span id="cap">10</span></div>
+      <div class="pill">🏠 Room <span id="level">1</span></div>
+    </div>
+    <div class="actions">
+      <button id="sellBtn" class="btn sell">SELL</button>
+      <button id="upgradeBtn" class="btn upgrade">UPGRADE</button>
+    </div>
+  </div>
+  <div id="joystick"><div id="stick"></div></div>
+  <div id="hint" class="hint">用搖桿控制吸塵器。靠近垃圾會自動吸入，FULL 後按 SELL 換錢，再升級吸塵器。</div>
+  <div id="menu" class="overlay show">
+    <div class="card">
+      <h1>Clean Space<br>Master</h1>
+      <p class="subtitle">Kai 的吸塵器清潔遊戲原型</p>
+      <div class="rules">
+        <div class="rule">🕹️ 搖桿移動吸塵器</div>
+        <div class="rule">🗑️ 靠近垃圾自動吸入</div>
+        <div class="rule">🎁 吸到寶箱拿 ruby</div>
+        <div class="rule">🧹 FULL 後 SELL 換 money</div>
+      </div>
+      <button id="startBtn" class="bigbtn">START CLEANING</button>
+    </div>
+  </div>
+  <div id="upgradePanel" class="upgradePanel">
+    <div class="card">
+      <h2 style="margin:0;font-size:34px;">Upgrade Vacuum</h2>
+      <p class="subtitle">把清掃賺到的 money 投回吸塵器</p>
+      <div class="upgradeGrid" id="upgradeGrid"></div>
+      <button id="closeUpgrade" class="bigbtn closeBtn">BACK</button>
+    </div>
+  </div>
+</div>
 <script>
-// === CUTTING GAME ===
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const $ = id => document.getElementById(id);
 
-// Hi-DPI support
-function resize() {
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = window.innerWidth * dpr;
-  canvas.height = window.innerHeight * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-window.addEventListener('resize', resize);
-resize();
+  const ui = {
+    money: $('money'), ruby: $('ruby'), dust: $('dust'), cap: $('cap'), level: $('level'),
+    sellBtn: $('sellBtn'), upgradeBtn: $('upgradeBtn'), menu: $('menu'), startBtn: $('startBtn'),
+    upgradePanel: $('upgradePanel'), upgradeGrid: $('upgradeGrid'), closeUpgrade: $('closeUpgrade'),
+    joystick: $('joystick'), stick: $('stick'), hint: $('hint')
+  };
 
-const W = () => window.innerWidth;
-const H = () => window.innerHeight;
-
-// === GAME STATE ===
-let state = 'menu'; // menu, playing, cutting, levelUp, gameOver
-let level = 1;
-let score = 0;
-let lives = 3;
-let blocks = [];
-let ropeY = 0;
-let bladeY = 0;
-let bladeTargetY = 0;
-let cutting = false;
-let cutTimer = 0;
-let cutResult = null; // 'hit', 'miss', 'wrong'
-let cutResultTimer = 0;
-let levelUpTimer = 0;
-let shakeX = 0;
-let shakeTimer = 0;
-let particles = [];
-
-// Block config per level
-function getConfig() {
-  const baseSpeed = 1.8 + level * 0.4;
-  const greenChance = Math.max(0.12, 0.28 - level * 0.02);
-  const blockCount = Math.min(15, 8 + level);
-  const blockSize = Math.max(36, 52 - level * 1.5);
-  const gap = Math.max(20, 32 - level * 1.2);
-  return { baseSpeed, greenChance, blockCount, blockSize, gap };
-}
-
-function spawnBlocks() {
-  blocks = [];
-  const cfg = getConfig();
-  let x = W() + 40;
-  let hasGreen = false;
-  for (let i = 0; i < cfg.blockCount; i++) {
-    const isGreen = Math.random() < cfg.greenChance;
-    if (isGreen) hasGreen = true;
-    blocks.push({
-      x: x,
-      w: cfg.blockSize,
-      h: cfg.blockSize,
-      green: isGreen,
-      cut: false,
-      num: String(i + 1).padStart(2, '0')
-    });
-    x += cfg.blockSize + cfg.gap;
+  let vw = 0, vh = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    vw = window.innerWidth;
+    vh = window.innerHeight;
+    canvas.width = Math.floor(vw * dpr);
+    canvas.height = Math.floor(vh * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  // Ensure at least one green
-  if (!hasGreen) {
-    const idx = Math.floor(Math.random() * blocks.length);
-    blocks[idx].green = true;
-  }
-}
+  window.addEventListener('resize', resize);
+  resize();
 
-function initLevel() {
-  ropeY = H() * 0.55;
-  bladeY = ropeY - H() * 0.32;
-  bladeTargetY = bladeY;
-  cutting = false;
-  cutTimer = 0;
-  cutResult = null;
-  cutResultTimer = 0;
-  spawnBlocks();
-}
+  const state = {
+    mode: 'menu',
+    level: 1,
+    money: 0,
+    ruby: 0,
+    dust: 0,
+    capacityLv: 1,
+    suctionLv: 1,
+    speedLv: 1,
+    valueLv: 1,
+    message: 'Clean the room!',
+    messageTimer: 0,
+    roomPulse: 0,
+    lastTime: performance.now()
+  };
 
-function startGame() {
-  level = 1;
-  score = 0;
-  lives = 3;
-  state = 'playing';
-  particles = [];
-  initLevel();
-}
+  const player = {
+    x: 360, y: 360, r: 24, vx: 0, vy: 0, face: 0
+  };
 
-// === PARTICLES ===
-function spawnParticles(x, y, color, count) {
-  for (let i = 0; i < count; i++) {
-    particles.push({
-      x, y,
-      vx: (Math.random() - 0.5) * 6,
-      vy: (Math.random() - 0.5) * 6 - 2,
-      life: 1,
-      decay: 0.015 + Math.random() * 0.02,
-      size: 2 + Math.random() * 4,
-      color
-    });
-  }
-}
+  let trash = [];
+  let particles = [];
+  let floatTexts = [];
+  const input = { x: 0, y: 0, active: false, id: null };
 
-// === INPUT ===
-function onTap() {
-  if (state === 'menu') {
-    startGame();
-    return;
-  }
-  if (state === 'gameOver') {
-    state = 'menu';
-    return;
-  }
-  if (state === 'playing' && !cutting) {
-    cutting = true;
-    cutTimer = 0;
-    bladeTargetY = ropeY;
-  }
-}
+  function capacity() { return 10 + (state.capacityLv - 1) * 6; }
+  function suctionRange() { return 78 + (state.suctionLv - 1) * 22; }
+  function moveSpeed() { return 210 + (state.speedLv - 1) * 30; }
+  function dustValue() { return 2 + (state.valueLv - 1); }
+  function isFull() { return state.dust >= capacity(); }
 
-canvas.addEventListener('pointerdown', onTap);
+  const upgrades = [
+    { key: 'capacityLv', icon: '🧺', name: 'Bigger Tank', desc: () => `容量 +6，目前 ${capacity()}`, base: 35 },
+    { key: 'suctionLv', icon: '🌪️', name: 'Stronger Suction', desc: () => `吸力範圍變大，目前 ${Math.round(suctionRange())}`, base: 45 },
+    { key: 'speedLv', icon: '⚡', name: 'Faster Wheels', desc: () => `移動速度變快，目前 ${Math.round(moveSpeed())}`, base: 40 },
+    { key: 'valueLv', icon: '💵', name: 'Better Sell Price', desc: () => `每份垃圾 $${dustValue()}`, base: 55 }
+  ];
+  function upgradeCost(u) { return Math.floor(u.base * Math.pow(1.55, state[u.key] - 1)); }
 
-// === UPDATE ===
-function update(dt) {
-  // Particles
-  particles = particles.filter(p => {
-    p.x += p.vx * dt * 60;
-    p.y += p.vy * dt * 60;
-    p.vy += 0.15 * dt * 60;
-    p.life -= p.decay * dt * 60;
-    return p.life > 0;
-  });
+  function rand(min, max) { return min + Math.random() * (max - min); }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function dist(a, b, c, d) { return Math.hypot(a - c, b - d); }
 
-  // Shake
-  if (shakeTimer > 0) {
-    shakeTimer -= dt;
-    shakeX = (Math.random() - 0.5) * 8 * (shakeTimer / 0.3);
-  } else {
-    shakeX = 0;
+  function roomBounds() {
+    return {
+      x: 42,
+      y: Math.max(86, 78 + Math.min(45, vw * 0.02)),
+      w: Math.max(320, vw - 84),
+      h: Math.max(330, vh - 132)
+    };
   }
 
-  if (state === 'levelUp') {
-    levelUpTimer -= dt;
-    if (levelUpTimer <= 0) {
-      level++;
-      state = 'playing';
-      initLevel();
+  function spawnRoom() {
+    const b = roomBounds();
+    trash = [];
+    const count = 18 + state.level * 5;
+    for (let i = 0; i < count; i++) {
+      const isChest = Math.random() < Math.min(0.08 + state.level * 0.01, 0.16);
+      trash.push({
+        type: isChest ? 'chest' : 'trash',
+        x: rand(b.x + 34, b.x + b.w - 34),
+        y: rand(b.y + 42, b.y + b.h - 34),
+        r: isChest ? 16 : rand(9, 15),
+        amount: isChest ? 0 : 1,
+        ruby: isChest ? Math.floor(rand(2, 6)) : 0,
+        sucked: false,
+        pull: 0,
+        spin: rand(0, Math.PI * 2),
+        color: ['#6b4f3b', '#4f6f52', '#d67245', '#705b8a', '#445c7a'][Math.floor(rand(0, 5))]
+      });
     }
-    return;
+    player.x = b.x + b.w / 2;
+    player.y = b.y + b.h / 2;
+    state.roomPulse = 1;
+    say(`Room ${state.level}: clean everything!`, 2.0);
   }
 
-  if (state !== 'playing') return;
+  function startGame() {
+    state.mode = 'playing';
+    state.level = 1;
+    state.money = 0;
+    state.ruby = 0;
+    state.dust = 0;
+    state.capacityLv = 1;
+    state.suctionLv = 1;
+    state.speedLv = 1;
+    state.valueLv = 1;
+    ui.menu.classList.remove('show');
+    ui.upgradePanel.classList.remove('show');
+    spawnRoom();
+    syncUi();
+  }
 
-  const cfg = getConfig();
+  function say(text, seconds = 1.5) {
+    state.message = text;
+    state.messageTimer = seconds;
+    ui.hint.textContent = text;
+  }
 
-  // Move blocks
-  blocks.forEach(b => {
-    if (!b.cut) b.x -= cfg.baseSpeed * dt * 60;
-  });
+  function syncUi() {
+    ui.money.textContent = state.money;
+    ui.ruby.textContent = state.ruby;
+    ui.dust.textContent = state.dust;
+    ui.cap.textContent = capacity();
+    ui.level.textContent = state.level;
+    ui.sellBtn.disabled = state.dust <= 0;
+    renderUpgradePanel();
+  }
 
-  // Blade animation
-  if (cutting) {
-    cutTimer += dt;
-    const cutDuration = 0.12;
-    const returnDuration = 0.3;
+  function renderUpgradePanel() {
+    ui.upgradeGrid.innerHTML = upgrades.map((u, idx) => {
+      const cost = upgradeCost(u);
+      const can = state.money >= cost;
+      return `<div class="upgradeItem">
+        <div><b>${u.icon} ${u.name} Lv.${state[u.key]}</b><small>${u.desc()}</small></div>
+        <button class="buyBtn" data-upgrade="${idx}" ${can ? '' : 'disabled'}>$${cost}</button>
+      </div>`;
+    }).join('');
+  }
 
-    if (cutTimer < cutDuration) {
-      // Swing down
-      const t = cutTimer / cutDuration;
-      bladeY = (ropeY - H() * 0.32) + (ropeY - (ropeY - H() * 0.32)) * easeInQuad(t);
-    } else if (cutTimer < cutDuration + 0.05) {
-      // Check hit at the moment blade reaches rope
-      if (!cutResult) {
-        const bladeX = W() / 2;
-        let hitBlock = null;
-        blocks.forEach(b => {
-          if (!b.cut && bladeX >= b.x && bladeX <= b.x + b.w) {
-            hitBlock = b;
-          }
-        });
-
-        if (hitBlock) {
-          hitBlock.cut = true;
-          if (hitBlock.green) {
-            cutResult = 'hit';
-            score += 100 * level;
-            spawnParticles(hitBlock.x + hitBlock.w / 2, ropeY, '#3a8c65', 20);
-          } else {
-            cutResult = 'wrong';
-            lives--;
-            shakeTimer = 0.3;
-            spawnParticles(hitBlock.x + hitBlock.w / 2, ropeY, '#8c3a3a', 15);
-            if (lives <= 0) {
-              state = 'gameOver';
-              return;
-            }
-          }
-        } else {
-          cutResult = 'miss';
-        }
-        cutResultTimer = 1.2;
-      }
-    } else if (cutTimer < cutDuration + returnDuration) {
-      // Return up
-      const t = (cutTimer - cutDuration - 0.05) / (returnDuration - 0.05);
-      bladeY = ropeY + ((ropeY - H() * 0.32) - ropeY) * easeOutQuad(t);
-    } else {
-      bladeY = ropeY - H() * 0.32;
-      cutting = false;
-      cutTimer = 0;
-      cutResult = null;
-
-      // Check if should advance level (after successful green hit)
-      // or reset blade
+  function addParticles(x, y, color, count = 10, power = 1) {
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x, y,
+        vx: rand(-120, 120) * power,
+        vy: rand(-160, 80) * power,
+        life: rand(0.35, 0.75),
+        max: 0.75,
+        size: rand(3, 7),
+        color
+      });
     }
   }
 
-  // Cut result timer
-  if (cutResultTimer > 0) {
-    cutResultTimer -= dt;
+  function addText(text, x, y, color = '#17211b') {
+    floatTexts.push({ text, x, y, vy: -48, life: 1.0, color });
   }
 
-  // Check if all greens passed (missed) — lose a life
-  const allGreensPassed = blocks.filter(b => b.green && !b.cut).every(b => b.x + b.w < -10);
-  const allBlocksPassed = blocks.every(b => b.x + b.w < -10 || b.cut);
-
-  if (allGreensPassed && blocks.filter(b => b.green && !b.cut).length > 0) {
-    // Green blocks scrolled off screen — miss
-    lives--;
-    shakeTimer = 0.3;
-    if (lives <= 0) {
-      state = 'gameOver';
+  function sellDust() {
+    if (state.dust <= 0) {
+      say('Nothing to sell yet — go vacuum some trash!', 1.4);
       return;
     }
-    initLevel();
+    const earned = state.dust * dustValue();
+    state.money += earned;
+    addText(`+$${earned}`, player.x, player.y - 44, '#a56b00');
+    addParticles(player.x, player.y - 18, '#ffd447', 26, 1.25);
+    state.dust = 0;
+    say('Tank emptied. Keep cleaning!', 1.4);
+    syncUi();
   }
 
-  // Check level clear: at least one green was cut
-  const greensCut = blocks.filter(b => b.green && b.cut).length;
-  if (greensCut > 0 && !cutting) {
-    state = 'levelUp';
-    levelUpTimer = 1.5;
-  }
-}
-
-function easeInQuad(t) { return t * t; }
-function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
-
-// === DRAW ===
-function draw() {
-  const w = W(), h = H();
-  ctx.clearRect(0, 0, w, h);
-
-  ctx.save();
-  ctx.translate(shakeX, 0);
-
-  // Background
-  ctx.fillStyle = '#1a1a18';
-  ctx.fillRect(0, 0, w, h);
-
-  // Subtle grid
-  ctx.strokeStyle = 'rgba(50,50,45,0.06)';
-  ctx.lineWidth = 0.5;
-  for (let x = 0; x < w; x += 60) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-  }
-  for (let y = 0; y < h; y += 60) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-  }
-
-  // Subtle green glow at center
-  const grd = ctx.createRadialGradient(w/2, ropeY, 0, w/2, ropeY, w * 0.35);
-  grd.addColorStop(0, 'rgba(58,140,101,0.04)');
-  grd.addColorStop(1, 'transparent');
-  ctx.fillStyle = grd;
-  ctx.fillRect(0, 0, w, h);
-
-  if (state === 'menu') {
-    drawMenu(w, h);
-    ctx.restore();
-    return;
-  }
-
-  if (state === 'gameOver') {
-    drawGameOver(w, h);
-    ctx.restore();
-    return;
-  }
-
-  // === ROPE ===
-  ctx.strokeStyle = '#3e3e38';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([14, 4]);
-  ctx.beginPath();
-  ctx.moveTo(0, ropeY);
-  ctx.lineTo(w, ropeY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // === BLOCKS ===
-  const cfg = getConfig();
-  blocks.forEach(b => {
-    if (b.cut) return;
-    const bx = b.x;
-    const by = ropeY - b.h / 2;
-
-    ctx.fillStyle = b.green ? '#2a6a4e' : '#2c2c28';
-    ctx.strokeStyle = b.green ? '#3a8c65' : '#3a3a34';
-    ctx.lineWidth = 1.2;
-    ctx.fillRect(bx, by, b.w, b.h);
-    ctx.strokeRect(bx, by, b.w, b.h);
-
-    if (b.green) {
-      ctx.shadowColor = 'rgba(58,140,101,0.15)';
-      ctx.shadowBlur = 18;
-      ctx.fillRect(bx, by, b.w, b.h);
-      ctx.shadowBlur = 0;
+  function buyUpgrade(index) {
+    const u = upgrades[index];
+    if (!u) return;
+    const cost = upgradeCost(u);
+    if (state.money < cost) {
+      say('Need more money. Sell dust first!', 1.4);
+      return;
     }
+    state.money -= cost;
+    state[u.key]++;
+    addParticles(player.x, player.y, '#8df0c0', 28, 1.3);
+    addText(`${u.icon} Lv.${state[u.key]}`, player.x, player.y - 52, '#087d59');
+    say(`${u.name} upgraded!`, 1.4);
+    syncUi();
+  }
 
-    // Block number
-    ctx.fillStyle = b.green ? '#3a8c65' : '#333330';
-    ctx.font = '8px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(b.num, bx + b.w / 2, by + b.h + 14);
+  ui.startBtn.addEventListener('click', startGame);
+  ui.sellBtn.addEventListener('click', sellDust);
+  ui.upgradeBtn.addEventListener('click', () => { renderUpgradePanel(); ui.upgradePanel.classList.add('show'); });
+  ui.closeUpgrade.addEventListener('click', () => ui.upgradePanel.classList.remove('show'));
+  ui.upgradeGrid.addEventListener('click', e => {
+    const btn = e.target.closest('[data-upgrade]');
+    if (btn) buyUpgrade(Number(btn.dataset.upgrade));
   });
 
-  // === BLADE ===
-  const bladeX = w / 2;
-
-  // Handle
-  const handleTop = bladeY - 80;
-  ctx.fillStyle = '#3a3632';
-  ctx.fillRect(bladeX - 7, handleTop, 14, 80);
-
-  // Guard
-  ctx.fillStyle = '#4a4642';
-  ctx.fillRect(bladeX - 15, bladeY - 4, 30, 8);
-
-  // Edge
-  const edgeLen = h * 0.22;
-  const gradient = ctx.createLinearGradient(0, bladeY, 0, bladeY + edgeLen);
-  gradient.addColorStop(0, '#c0c0b8');
-  gradient.addColorStop(0.35, '#e0e0d8');
-  gradient.addColorStop(0.55, '#f0f0e8');
-  gradient.addColorStop(0.8, '#d0d0c8');
-  gradient.addColorStop(1, '#b8b8b0');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(bladeX - 1, bladeY + 4, 2, edgeLen);
-
-  // Tip
-  ctx.fillStyle = '#d0d0c6';
-  ctx.beginPath();
-  ctx.moveTo(bladeX - 5, bladeY + 4 + edgeLen);
-  ctx.lineTo(bladeX + 5, bladeY + 4 + edgeLen);
-  ctx.lineTo(bladeX, bladeY + 4 + edgeLen + 18);
-  ctx.closePath();
-  ctx.fill();
-
-  // === FIGURE (below rope) ===
-  const figY = h * 0.78;
-
-  // Arms reaching up
-  ctx.strokeStyle = '#3a3a34';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(bladeX - 20, figY);
-  ctx.lineTo(bladeX - 7, handleTop + 70);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(bladeX + 20, figY);
-  ctx.lineTo(bladeX + 7, handleTop + 70);
-  ctx.stroke();
-
-  // Head
-  ctx.fillStyle = '#262622';
-  ctx.strokeStyle = '#343430';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(bladeX, figY + 10, 20, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  // Body
-  ctx.fillStyle = '#262622';
-  ctx.strokeStyle = '#343430';
-  roundRect(ctx, bladeX - 28, figY + 34, 56, 80, 6);
-  ctx.fill();
-  ctx.stroke();
-
-  // === HUD ===
-  // Level
-  ctx.fillStyle = '#3a8c65';
-  ctx.font = '11px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText('\u25CF LEVEL ' + level, 20, 30);
-
-  // Score
-  ctx.fillStyle = '#585850';
-  ctx.textAlign = 'right';
-  ctx.fillText('SCORE: ' + score, w - 20, 30);
-
-  // Lives
-  ctx.fillStyle = '#8c3a3a';
-  ctx.textAlign = 'left';
-  let livesStr = '';
-  for (let i = 0; i < lives; i++) livesStr += '\u2764 ';
-  ctx.fillText(livesStr, 20, 52);
-
-  // Cut result feedback
-  if (cutResultTimer > 0 && cutResult) {
-    ctx.globalAlpha = Math.min(1, cutResultTimer / 0.3);
-    ctx.font = 'bold 18px monospace';
-    ctx.textAlign = 'center';
-    if (cutResult === 'hit') {
-      ctx.fillStyle = '#3a8c65';
-      ctx.fillText('PERFECT CUT!', w / 2, ropeY - 60);
-    } else if (cutResult === 'wrong') {
-      ctx.fillStyle = '#8c3a3a';
-      ctx.fillText('WRONG BLOCK!', w / 2, ropeY - 60);
-    } else if (cutResult === 'miss') {
-      ctx.fillStyle = '#585850';
-      ctx.fillText('MISS!', w / 2, ropeY - 60);
-    }
-    ctx.globalAlpha = 1;
+  function joystickCenter() {
+    const r = ui.joystick.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, rad: r.width / 2 };
+  }
+  function updateStick(clientX, clientY) {
+    const c = joystickCenter();
+    const dx = clientX - c.x;
+    const dy = clientY - c.y;
+    const len = Math.hypot(dx, dy);
+    const max = c.rad - 33;
+    const nx = len > 0 ? dx / len : 0;
+    const ny = len > 0 ? dy / len : 0;
+    const mag = Math.min(len, max);
+    input.x = (nx * mag) / max;
+    input.y = (ny * mag) / max;
+    ui.stick.style.transform = `translate(${nx * mag}px, ${ny * mag}px)`;
+  }
+  function resetStick() {
+    input.x = 0; input.y = 0; input.active = false; input.id = null;
+    ui.stick.style.transform = 'translate(0px, 0px)';
   }
 
-  // Level up overlay
-  if (state === 'levelUp') {
-    ctx.fillStyle = 'rgba(26,26,24,0.7)';
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#3a8c65';
-    ctx.font = 'bold 28px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('LEVEL ' + (level + 1), w / 2, h / 2 - 10);
-    ctx.fillStyle = '#585850';
-    ctx.font = '13px monospace';
-    ctx.fillText('GET READY', w / 2, h / 2 + 20);
-  }
-
-  // Particles
-  particles.forEach(p => {
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  ui.joystick.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    input.active = true;
+    input.id = e.pointerId;
+    ui.joystick.setPointerCapture(e.pointerId);
+    updateStick(e.clientX, e.clientY);
   });
-  ctx.globalAlpha = 1;
+  ui.joystick.addEventListener('pointermove', e => {
+    if (input.active && e.pointerId === input.id) {
+      e.preventDefault();
+      updateStick(e.clientX, e.clientY);
+    }
+  });
+  ui.joystick.addEventListener('pointerup', e => { if (e.pointerId === input.id) resetStick(); });
+  ui.joystick.addEventListener('pointercancel', e => { if (e.pointerId === input.id) resetStick(); });
 
-  // Corner marks
-  const cm = 20;
-  ctx.strokeStyle = '#3a3a34';
-  ctx.lineWidth = 1;
-  // TL
-  ctx.beginPath(); ctx.moveTo(cm, cm); ctx.lineTo(cm + 14, cm); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cm, cm); ctx.lineTo(cm, cm + 14); ctx.stroke();
-  // TR
-  ctx.beginPath(); ctx.moveTo(w - cm, cm); ctx.lineTo(w - cm - 14, cm); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(w - cm, cm); ctx.lineTo(w - cm, cm + 14); ctx.stroke();
-  // BL
-  ctx.beginPath(); ctx.moveTo(cm, h - cm); ctx.lineTo(cm + 14, h - cm); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cm, h - cm); ctx.lineTo(cm, h - cm - 14); ctx.stroke();
-  // BR
-  ctx.beginPath(); ctx.moveTo(w - cm, h - cm); ctx.lineTo(w - cm - 14, h - cm); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(w - cm, h - cm); ctx.lineTo(w - cm, h - cm - 14); ctx.stroke();
+  window.addEventListener('keydown', e => {
+    if (e.key === ' ' && state.mode === 'menu') startGame();
+    if (e.key.toLowerCase() === 's') sellDust();
+  });
 
-  // Bottom ref line
-  ctx.strokeStyle = '#26261f';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(40, h - 30);
-  ctx.lineTo(w - 40, h - 30);
-  ctx.stroke();
-  ctx.fillStyle = '#26261f';
-  ctx.font = '7px monospace';
-  ctx.textAlign = 'right';
-  ctx.fillText('KINETIC SEVERANCE v' + level + '.0', w - 40, h - 18);
+  function update(dt) {
+    if (state.mode !== 'playing') return;
+    state.messageTimer -= dt;
+    if (state.messageTimer <= 0) {
+      ui.hint.textContent = isFull() ? 'FULL! Press SELL to empty the vacuum.' : 'Clean trash, find chests, sell dust, upgrade!';
+    }
+    state.roomPulse = Math.max(0, state.roomPulse - dt * 1.6);
 
-  ctx.restore();
-}
+    const b = roomBounds();
+    const spd = moveSpeed();
+    player.vx = input.x * spd;
+    player.vy = input.y * spd;
+    player.x = clamp(player.x + player.vx * dt, b.x + 24, b.x + b.w - 24);
+    player.y = clamp(player.y + player.vy * dt, b.y + 24, b.y + b.h - 24);
+    if (Math.hypot(player.vx, player.vy) > 4) player.face = Math.atan2(player.vy, player.vx);
 
-function drawMenu(w, h) {
-  ctx.fillStyle = '#585850';
-  ctx.font = '11px monospace';
-  ctx.textAlign = 'center';
-  ctx.letterSpacing = '8px';
-  ctx.fillText('K I N E T I C   S E V E R A N C E', w / 2, h * 0.35);
-  ctx.letterSpacing = '0px';
+    const range = suctionRange();
+    for (const t of trash) {
+      if (t.sucked) continue;
+      t.spin += dt * 2.2;
+      const d = dist(player.x, player.y, t.x, t.y);
+      if (d < range && !isFull()) {
+        const pull = (1 - d / range) * (t.type === 'chest' ? 520 : 650);
+        t.x += ((player.x - t.x) / Math.max(d, 1)) * pull * dt;
+        t.y += ((player.y - t.y) / Math.max(d, 1)) * pull * dt;
+        t.pull = clamp(t.pull + dt * 3, 0, 1);
+      } else {
+        t.pull = clamp(t.pull - dt * 2, 0, 1);
+      }
+      if (d < player.r + t.r + 7) {
+        t.sucked = true;
+        if (t.type === 'chest') {
+          state.ruby += t.ruby;
+          addText(`+${t.ruby} ruby`, t.x, t.y - 22, '#e83f6f');
+          addParticles(t.x, t.y, '#e83f6f', 24, 1.2);
+          say('Treasure chest! Ruby found!', 1.5);
+        } else {
+          state.dust = Math.min(capacity(), state.dust + t.amount);
+          addParticles(t.x, t.y, '#6b4f3b', 8, 0.8);
+          if (isFull()) say('FULL! Press SELL to make space.', 1.8);
+        }
+        syncUi();
+      }
+    }
+    trash = trash.filter(t => !t.sucked);
 
-  ctx.fillStyle = '#3a3a34';
-  ctx.font = '9px monospace';
-  ctx.fillText('concept \u2014 timing \u2014 precision', w / 2, h * 0.35 + 24);
+    if (trash.length === 0) {
+      state.level++;
+      state.money += 12 + state.level * 3;
+      addText('ROOM CLEAN!', player.x, player.y - 62, '#087d59');
+      addParticles(player.x, player.y, '#b7f35a', 40, 1.4);
+      spawnRoom();
+      syncUi();
+    }
 
-  // Animated blade hint
-  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 500);
-  ctx.globalAlpha = 0.4 + pulse * 0.4;
-  ctx.fillStyle = '#3a8c65';
-  ctx.font = '14px monospace';
-  ctx.fillText('TAP TO START', w / 2, h * 0.55);
-  ctx.globalAlpha = 1;
+    particles = particles.filter(p => {
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 280 * dt;
+      p.vx *= Math.pow(0.08, dt);
+      return p.life > 0;
+    });
+    floatTexts = floatTexts.filter(f => {
+      f.life -= dt;
+      f.y += f.vy * dt;
+      return f.life > 0;
+    });
+  }
 
-  ctx.fillStyle = '#333330';
-  ctx.font = '9px monospace';
-  ctx.fillText('\u2500 Cut the green blocks \u2500', w / 2, h * 0.65);
-  ctx.fillText('Avoid the gray ones', w / 2, h * 0.65 + 18);
-}
+  function drawRoundedRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
 
-function drawGameOver(w, h) {
-  ctx.fillStyle = 'rgba(26,26,24,0.85)';
-  ctx.fillRect(0, 0, w, h);
+  function drawBackground() {
+    const grd = ctx.createLinearGradient(0, 0, 0, vh);
+    grd.addColorStop(0, '#a4def8');
+    grd.addColorStop(0.48, '#83c9f4');
+    grd.addColorStop(1, '#6fb8e5');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, vw, vh);
 
-  ctx.fillStyle = '#8c3a3a';
-  ctx.font = 'bold 24px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('GAME OVER', w / 2, h * 0.38);
+    const b = roomBounds();
+    ctx.save();
+    ctx.translate(0, state.roomPulse * Math.sin(performance.now() / 90) * 2);
+    ctx.fillStyle = '#f8e7bc';
+    ctx.strokeStyle = '#17211b';
+    ctx.lineWidth = 5;
+    drawRoundedRect(b.x, b.y, b.w, b.h, 32);
+    ctx.fill(); ctx.stroke();
 
-  ctx.fillStyle = '#585850';
-  ctx.font = '14px monospace';
-  ctx.fillText('SCORE: ' + score, w / 2, h * 0.45);
-  ctx.fillText('LEVEL: ' + level, w / 2, h * 0.45 + 24);
+    ctx.globalAlpha = 0.24;
+    ctx.strokeStyle = '#c79f63';
+    ctx.lineWidth = 2;
+    const tile = 64;
+    for (let x = b.x + tile; x < b.x + b.w; x += tile) {
+      ctx.beginPath(); ctx.moveTo(x, b.y + 4); ctx.lineTo(x, b.y + b.h - 4); ctx.stroke();
+    }
+    for (let y = b.y + tile; y < b.y + b.h; y += tile) {
+      ctx.beginPath(); ctx.moveTo(b.x + 4, y); ctx.lineTo(b.x + b.w - 4, y); ctx.stroke();
+    }
+    ctx.restore();
 
-  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 500);
-  ctx.globalAlpha = 0.4 + pulse * 0.4;
-  ctx.fillStyle = '#585850';
-  ctx.font = '12px monospace';
-  ctx.fillText('TAP TO CONTINUE', w / 2, h * 0.58);
-  ctx.globalAlpha = 1;
-}
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 9; i++) {
+      const x = (i * 173 + performance.now() * 0.006) % (vw + 90) - 50;
+      const y = 35 + (i % 3) * 42;
+      ctx.beginPath(); ctx.ellipse(x, y, 44, 12, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
+  function drawTrash(t) {
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.rotate(t.spin * 0.2);
+    const s = 1 + t.pull * 0.18;
+    ctx.scale(s, s);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#17211b';
+    if (t.type === 'chest') {
+      ctx.fillStyle = '#b87734';
+      drawRoundedRect(-17, -13, 34, 28, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ffd447';
+      ctx.fillRect(-17, -2, 34, 8); ctx.strokeRect(-17, -2, 34, 8);
+      ctx.fillStyle = '#e83f6f';
+      ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(7, 0); ctx.lineTo(0, 8); ctx.lineTo(-7, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else {
+      ctx.fillStyle = t.color;
+      ctx.beginPath();
+      for (let i = 0; i < 9; i++) {
+        const a = i / 9 * Math.PI * 2;
+        const rr = t.r * (0.72 + (i % 2) * 0.38);
+        ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = '#fff6df';
+      ctx.beginPath(); ctx.arc(-t.r * 0.25, -t.r * 0.25, t.r * 0.22, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
 
-// === GAME LOOP ===
-let lastTime = 0;
-function loop(time) {
-  const dt = Math.min((time - lastTime) / 1000, 0.05);
-  lastTime = time;
-  update(dt);
-  draw();
+  function drawPlayer() {
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.face);
+
+    const full = isFull();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#17211b';
+
+    // suction cone / hose mouth
+    ctx.save();
+    ctx.globalAlpha = full ? 0.1 : 0.22;
+    ctx.fillStyle = '#8df0c0';
+    ctx.beginPath();
+    ctx.moveTo(22, -10);
+    ctx.lineTo(suctionRange(), -28);
+    ctx.lineTo(suctionRange(), 28);
+    ctx.lineTo(22, 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // wheels
+    ctx.fillStyle = '#27352d';
+    ctx.beginPath(); ctx.arc(-13, -22, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-13, 22, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    // body
+    ctx.fillStyle = full ? '#ff9bb9' : '#8df0c0';
+    drawRoundedRect(-28, -24, 56, 48, 18); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff6df';
+    drawRoundedRect(-14, -14, 25, 28, 10); ctx.fill(); ctx.stroke();
+
+    // nose
+    ctx.fillStyle = '#5b6970';
+    drawRoundedRect(20, -12, 28, 24, 10); ctx.fill(); ctx.stroke();
+
+    // ruby light
+    ctx.fillStyle = '#e83f6f';
+    ctx.beginPath(); ctx.arc(-13, 0, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    if (full) {
+      ctx.save();
+      ctx.translate(player.x, player.y - 50);
+      ctx.fillStyle = '#fff6df';
+      ctx.strokeStyle = '#17211b';
+      ctx.lineWidth = 3;
+      drawRoundedRect(-32, -16, 64, 30, 13); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#e83f6f';
+      ctx.font = '900 17px Trebuchet MS';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('FULL', 0, 0);
+      ctx.restore();
+    }
+  }
+
+  function drawEffects() {
+    for (const p of particles) {
+      ctx.save();
+      ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    for (const f of floatTexts) {
+      ctx.save();
+      ctx.globalAlpha = clamp(f.life, 0, 1);
+      ctx.fillStyle = f.color;
+      ctx.strokeStyle = '#fff6df';
+      ctx.lineWidth = 5;
+      ctx.font = '1000 24px Trebuchet MS';
+      ctx.textAlign = 'center';
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.restore();
+    }
+  }
+
+  function drawSuctionMeter() {
+    if (state.mode !== 'playing') return;
+    const w = Math.min(290, vw - 24), h = 16;
+    const x = 12, y = vh - 22;
+    const fill = state.dust / capacity();
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,246,223,0.8)';
+    ctx.strokeStyle = '#17211b';
+    ctx.lineWidth = 3;
+    drawRoundedRect(x, y, w, h, 999); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = isFull() ? '#e83f6f' : '#8df0c0';
+    drawRoundedRect(x + 3, y + 3, Math.max(8, (w - 6) * fill), h - 6, 999); ctx.fill();
+    ctx.restore();
+  }
+
+  function draw() {
+    drawBackground();
+    trash.sort((a, b) => a.y - b.y).forEach(drawTrash);
+    drawPlayer();
+    drawEffects();
+    drawSuctionMeter();
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.033, (now - state.lastTime) / 1000 || 0.016);
+    state.lastTime = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
   requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
+  syncUi();
+})();
 </script>
 </body>
 </html>

@@ -1,21 +1,43 @@
-# Kinetic Severance — 切割遊戲
+# Clean Space Master by Kai
 
-A timing-based cutting game built with HTML5 Canvas.
+A mobile-friendly browser prototype based on Kai's game idea.
 
-## Gameplay
-- Blocks move along a rope from right to left
-- Tap/click to swing the blade down
-- **Cut the green blocks** to advance to the next level
-- **Avoid cutting gray blocks** — you lose a life
-- Difficulty increases each level (faster blocks, fewer greens)
+## Core Loop
+
+1. Move the vacuum with the joystick.
+2. Vacuum trash on the floor.
+3. Find treasure chests and collect ruby.
+4. When the tank is **FULL**, press **SELL** to turn dust into money.
+5. Use money to **UPGRADE** the vacuum.
+6. Clear every room and continue to the next one.
+
+## Implemented MVP
+
+- Touch joystick movement
+- Auto-suction when the vacuum gets close to trash
+- Tank capacity and FULL state
+- SELL button that empties the tank and gives money
+- Chest rewards that give ruby
+- Upgrade panel:
+  - Bigger Tank
+  - Stronger Suction
+  - Faster Wheels
+  - Better Sell Price
+- Room-complete progression
+- Mobile-safe fullscreen canvas
 
 ## Tech Stack
-- Pure HTML5 Canvas + JavaScript
+
+- Single-file HTML5 Canvas game
+- No build step
 - No dependencies
-- Mobile-friendly (touch support)
 
-## Deploy
-Static site — just serve `index.html`.
+## Run Locally
 
-## Concept Art
-![Concept](concept-art.png)
+Serve the folder with any static server, for example:
+
+```bash
+npx http-server .
+```
+
+Then open the local URL on desktop or mobile.
